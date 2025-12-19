@@ -1,56 +1,75 @@
-const express = require("express");
-const router = express.Router();
-const Student = require("../models/student");
+module.exports = (db) => {
+  const express = require("express");
+  const router = express.Router();
 
-// CREATE – Add student
-router.post("/", async (req, res) => {
-    try {
-        const student = new Student(req.body);
-        await student.save();
-        res.json({ message: "Student added", data: student });
-    } catch (err) {
-        res.status(400).json({ message: err.message });
-    }
-});
+  router.post("/students", (req, res) => {
+    const { name, age, course, email } = req.body;
 
-// READ – Get all students
-router.get("/", async (req, res) => {
-    const students = await Student.find();
-    res.json(students);
-});
-
-// READ – Get student by ID
-router.get("/:id", async (req, res) => {
-    const student = await Student.findOne({ id: req.params.id });
-    if (!student) {
-        return res.status(404).json({ message: "Student not found" });
-    }
-    res.json(student);
-});
-
-// UPDATE – Update student by ID
-router.put("/:id", async (req, res) => {
-    const student = await Student.findOneAndUpdate(
-        { id: req.params.id },
-        req.body,
-        { new: true }
+    db.run(
+      "INSERT INTO students (name, age, course, email) VALUES (?, ?, ?, ?)",
+      [name, age, course, email],
+      function (err) {
+        if (err) {
+          return res.status(400).json({ error: err.message });
+        }
+        res.json({ id: this.lastID });
+      }
     );
-    res.json({ message: "Student updated", data: student });
-});
+  });
+
+ 
+  router.get("/students", (req, res) => {
+    db.all(
+      "SELECT * FROM students ORDER BY age DESC",
+      [],
+      (err, rows) => {
+        res.json(rows);
+      }
+    );
+  });
 
 
+  router.get("/students/course/:course", (req, res) => {
+    db.all(
+      "SELECT * FROM students WHERE course = ?",
+      [req.params.course],
+      (err, rows) => {
+        res.json(rows);
+      }
+    );
+  });
 
-router.get("/report/course-count", async (req, res) => {
-    const result = await Student.aggregate([
-        { $group: { _id: "$course", total: { $sum: 1 } } }
-    ]);
-    res.json(result);
-});
+  /*
+   WHY THIS IS ADVANCED:
+   - Uses INDEX on course column
+   - Faster search
+  */
 
-// DELETE – Delete student by ID
-router.delete("/:id", async (req, res) => { // ':id' passing id as a URL parameter
-    await Student.findOneAndDelete({ id: req.params.id });
-    res.json({ message: "Student deleted" });
-});
+  /* ==============================
+     DELETE STUDENT (TRIGGER FIRES)
+  ============================== */
+  router.delete("/students/:id", (req, res) => {
+    db.run(
+      "DELETE FROM students WHERE id = ?",
+      [req.params.id],
+      () => {
+        res.json({ message: "Deleted" });
+      }
+    );
+  });
 
-module.exports = router;
+  /* ==============================
+     VIEW TRIGGER LOGS
+  ============================== */
+  router.get("/logs", (req, res) => {
+    db.all(
+      "SELECT * FROM student_log",
+      [],
+      (err, rows) => {
+        res.json(rows);
+      }
+    );
+  });
+
+  return router;
+};
